@@ -24,9 +24,7 @@ url: Optional[str] = os.environ.get("SUPABASE_URL")
 key: Optional[str] = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
 
-app.config["JWT_SECRET_KEY"] = os.environ.get(
-    "JWT_SECRET_KEY", "your_secret_key"
-)  # Change this to your own secret
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY")
 
 
 def generate_jwt(user_id: int) -> str:
@@ -351,4 +349,4 @@ def verify_token():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True)  # This will change for production, just here for debugging
