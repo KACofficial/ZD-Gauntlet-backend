@@ -1,0 +1,17 @@
+
+# the config stuff, Cannot be leaked. Very dangerous
+.env
+
+# virtual environment
+venv/
+.venv/
+
+# editor stuff
+.vscode/
+
+
+# snyk stuff
+.dcignore
+
+# future proof python stuff(I learned my lesson last time I pushed this to prod)
+**/__pycache__/
