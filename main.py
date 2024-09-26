@@ -126,22 +126,21 @@ def add_user():
     hashed_password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
         "utf-8"
     )
-    response = supabase.table("players").insert(
-        {"username": username, "password": hashed_password}
-    ).execute()
-    
+    response = (
+        supabase.table("players")
+        .insert({"username": username, "password": hashed_password})
+        .execute()
+    )
+
     if response and response.data:
         user_id = response.data[0].get("id")
         token = generate_jwt(user_id)
     else:
         user_id = None
         token = None
-        return (
-                jsonify({ 
-                            "status": "error",
-                            "message": "An unexpected error occurred..."
-                         })
-                )
+        return jsonify(
+            {"status": "error", "message": "An unexpected error occurred..."}
+        )
 
     return (
         jsonify(
@@ -262,7 +261,7 @@ def get_userid(current_user):
     "5 per minute", error_message="Too many attempts, please try again later..."
 )
 @jwt_required
-def add_to_challenge(amount):
+def add_to_challenge(current_user, amount):
     data = request.get_json()
     if data is None:
         return jsonify({"status": "error", "message": "No data provided"}), 400
@@ -314,8 +313,41 @@ def add_to_challenge(amount):
         )
 
 
+@app.route("/get-userdata", methods=["POST"])
+@jwt_required
+def get_all_data(current_user):
+    data = request.get_json()
+    if data is None:
+        return jsonify({"status": "error", "message": "No data provided"}), 400
+
+    userid = data.get("userid")
+    if not userid:
+        return jsonify({"error": "User ID is required"}), 400
+
+    response = (
+        supabase.table("players")
+        .select("id, created_at, username, challenge_num, completed")
+        .eq("id", userid)
+        .execute()
+    )
+
+    if response.data:
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "message": "Here is your user data",
+                    "data": response.data,
+                }
+            ),
+            200,
+        )
+
+    return jsonify({"status": "error", "message": "User not found"}), 404
+
+
 @app.route("/check-token", methods=["POST"])
-def get_all_data():
+def check_token():
     token = None
     if "Authorization" in request.headers:
         token = request.headers["Authorization"].split(" ")[1]
