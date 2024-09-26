@@ -9,6 +9,7 @@ from flask_limiter.util import get_remote_address
 from typing import Optional
 import jwt
 from datetime import datetime, timedelta
+import functools
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -30,12 +31,13 @@ app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY")
 def generate_jwt(user_id: int) -> str:
     payload = {
         "user_id": user_id,
-        "exp": datetime.utcnow() + timedelta(days=1),
+        "exp": datetime.utcnow() + timedelta(weeks=1),
     }
     return jwt.encode(payload, app.config["JWT_SECRET_KEY"], algorithm="HS256")
 
 
 def jwt_required(f):
+    @functools.wraps(f)
     def decorated_function(*args, **kwargs):
         token = None
         if "Authorization" in request.headers:
@@ -67,7 +69,7 @@ def ratelimit_error(e):
 
 @app.route("/add-user", methods=["POST"])
 @limiter.limit(
-    "5 per minute", error_message="Too many attempts, please try again later..."
+    "1 per minute", error_message="Too many attempts, please try again later..."
 )
 def add_user():
     data = request.get_json()
@@ -124,12 +126,22 @@ def add_user():
     hashed_password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
         "utf-8"
     )
-    supabase.table("players").insert(
+    response = supabase.table("players").insert(
         {"username": username, "password": hashed_password}
     ).execute()
-
-    user_id = response[0]["id"]
-    token = generate_jwt(user_id)
+    
+    if response and response.data:
+        user_id = response.data[0].get("id")
+        token = generate_jwt(user_id)
+    else:
+        user_id = None
+        token = None
+        return (
+                jsonify({ 
+                            "status": "error",
+                            "message": "An unexpected error occurred..."
+                         })
+                )
 
     return (
         jsonify(
@@ -137,6 +149,7 @@ def add_user():
                 "status": "success",
                 "message": f"{username} added to database",
                 "token": token,
+                "userid": user_id,
             }
         ),
         200,
@@ -191,7 +204,8 @@ def login_user():
 
 
 @app.route("/get-challenge", methods=["POST"])
-def get_challenge():
+@jwt_required
+def get_challenge(current_user):
     data = request.get_json()
     if data is None:
         return jsonify({"status": "error", "message": "No data provided"}), 400
@@ -222,7 +236,8 @@ def get_challenge():
 
 
 @app.route("/get-userid", methods=["POST"])
-def get_userid():
+@jwt_required
+def get_userid(current_user):
     data = request.get_json()
     if data is None:
         return jsonify({"status": "error", "message": "No data provided"}), 400
@@ -246,6 +261,7 @@ def get_userid():
 @limiter.limit(
     "5 per minute", error_message="Too many attempts, please try again later..."
 )
+@jwt_required
 def add_to_challenge(amount):
     data = request.get_json()
     if data is None:
@@ -298,40 +314,8 @@ def add_to_challenge(amount):
         )
 
 
-@app.route("/get-userdata", methods=["POST"])
-@limiter.limit(
-    "10 per minute", error_message="Too many attempts, please try again later..."
-)
+@app.route("/check-token", methods=["POST"])
 def get_all_data():
-    data = request.get_json()
-    if data is None:
-        return jsonify({"status": "error", "message": "No data provided"}), 400
-
-    userid = data.get("userid")
-    if not userid:
-        return jsonify({"status": "error", "message": "UserID is required"}), 400
-
-    response = (
-        supabase.table("players")
-        .select("id, created_at, username, challenge_num")
-        .eq("id", userid)
-        .execute()
-    )
-
-    if response.data:
-        return (
-            jsonify({"status": "success", "message": "success", **response.data[0]}),
-            200,
-        )
-    else:
-        return (
-            jsonify({"status": "error", "message": "No userid found for this user"}),
-            404,
-        )
-
-
-@app.route("/verify-token", methods=["POST"])
-def verify_token():
     token = None
     if "Authorization" in request.headers:
         token = request.headers["Authorization"].split(" ")[1]
