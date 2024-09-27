@@ -40,11 +40,18 @@ def jwt_required(f):
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
         token = None
-        if "Authorization" in request.headers:
-            token = request.headers["Authorization"].split(" ")[1]
+        auth_header = request.headers.get("Authorization")
+
+        if auth_header:
+            parts = auth_header.split(" ")
+            if len(parts) == 2 and parts[0] == "Bearer":
+                token = parts[1]
 
         if not token:
-            return jsonify({"status": "error", "message": "Token is missing!"}), 401
+            return (
+                jsonify({"status": "error", "message": "Token is missing or invalid!"}),
+                401,
+            )
 
         try:
             data = jwt.decode(token, app.config["JWT_SECRET_KEY"], algorithms=["HS256"])
@@ -89,6 +96,7 @@ def add_user():
         )
 
     if len(username) > 50:
+        limiter.reset()
         return (
             jsonify(
                 {
@@ -100,11 +108,23 @@ def add_user():
         )
 
     if len(password) > 72:
+        limiter.reset()
         return (
             jsonify(
                 {
                     "status": "error",
                     "message": "Password cannot be longer than 72 characters, sorry.",
+                }
+            ),
+            400,
+        )
+    elif len(password) <= 8:
+        limiter.reset()
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "A secure password should be longer than 8 characters.",
                 }
             ),
             400,
@@ -199,7 +219,10 @@ def login_user():
                 401,
             )
     else:
-        return jsonify({"status": "error", "message": "User not found"}), 404
+        return (
+            jsonify({"status": "error", "message": "Invalid username or password"}),
+            401,
+        )
 
 
 @app.route("/get-challenge", methods=["POST"])
@@ -316,18 +339,18 @@ def add_to_challenge(current_user, amount):
 @app.route("/get-userdata", methods=["POST"])
 @jwt_required
 def get_all_data(current_user):
-    data = request.get_json()
-    if data is None:
-        return jsonify({"status": "error", "message": "No data provided"}), 400
+    # data = request.get_json()
+    # if data is None:
+    #     return jsonify({"status": "error", "message": "No data provided"}), 400
 
-    userid = data.get("userid")
-    if not userid:
-        return jsonify({"error": "User ID is required"}), 400
+    # userid = data.get("userid")
+    # if not userid:
+    #     return jsonify({"error": "User ID is required"}), 400
 
     response = (
         supabase.table("players")
         .select("id, created_at, username, challenge_num, completed")
-        .eq("id", userid)
+        .eq("id", current_user)
         .execute()
     )
 
@@ -337,13 +360,35 @@ def get_all_data(current_user):
                 {
                     "status": "success",
                     "message": "Here is your user data",
-                    "data": response.data,
+                    "data": response.data[0],
                 }
             ),
             200,
         )
 
     return jsonify({"status": "error", "message": "User not found"}), 404
+
+
+@app.route("/delete-account", methods=["DELETE"])
+@jwt_required
+def delete_account(current_user):
+    response = supabase.table("players").delete().eq("id", current_user).execute()
+
+    if response.data:
+        return (
+            jsonify({"status": "success", "message": "Account successfully deleted."}),
+            200,
+        )
+    else:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Failed to delete account. Please try again later.",
+                }
+            ),
+            500,
+        )
 
 
 @app.route("/check-token", methods=["POST"])
@@ -356,8 +401,25 @@ def check_token():
         return jsonify({"status": "error", "message": "Token is missing!"}), 401
 
     try:
-        jwt.decode(token, app.config["JWT_SECRET_KEY"], algorithms=["HS256"])
-        return jsonify({"status": "success", "message": "Token is valid!"}), 200
+        # Decode the token to get user_id
+        decoded_token = jwt.decode(
+            token, app.config["JWT_SECRET_KEY"], algorithms=["HS256"]
+        )
+        user_id = decoded_token.get("user_id")
+
+        # Check if user_id exists in the database
+        response = supabase.table("players").select("id").eq("id", user_id).execute()
+
+        if not response.data:
+            return jsonify({"status": "error", "message": "User does not exist!"}), 404
+
+        return (
+            jsonify(
+                {"status": "success", "message": "Token is valid and user exists!"}
+            ),
+            200,
+        )
+
     except jwt.ExpiredSignatureError:
         return jsonify({"status": "error", "message": "Token has expired!"}), 401
     except jwt.InvalidTokenError:
