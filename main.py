@@ -228,15 +228,15 @@ def login_user():
 @app.route("/get-challenge", methods=["POST"])
 @jwt_required
 def get_challenge(current_user):
-    data = request.get_json()
-    if data is None:
-        return jsonify({"status": "error", "message": "No data provided"}), 400
+    # data = request.get_json()
+    # if data is None:
+    #     return jsonify({"status": "error", "message": "No data provided"}), 400
 
-    userid = data.get("userid")
-    if not userid:
-        return jsonify({"error": "User ID is required"}), 400
+    # userid = data.get("userid")
+    # if not userid:
+    #     return jsonify({"error": "User ID is required"}), 400
 
-    response = supabase.table("players").select("*").eq("id", userid).execute()
+    response = supabase.table("players").select("*").eq("id", current_user).execute()
     if response.data:
         challenge = response.data[0].get("challenge_num")
         username = response.data[0].get("username")
@@ -279,61 +279,61 @@ def get_userid(current_user):
         )
 
 
-@app.route("/add-to-challenge/<int:amount>", methods=["POST"])
+@app.route("/update-challenge-num/<int:value>", methods=["POST"])
 @limiter.limit(
     "5 per minute", error_message="Too many attempts, please try again later..."
 )
 @jwt_required
-def add_to_challenge(current_user, amount):
-    data = request.get_json()
-    if data is None:
-        return jsonify({"status": "error", "message": "No data provided"}), 400
+def add_to_challenge(current_user, value):
+    # data = request.get_json()
+    # if data is None:
+    #     return jsonify({"status": "error", "message": "No data provided"}), 400
 
-    userid = data.get("userid")
-    if not userid:
-        return jsonify({"status": "error", "message": "UserID is required"}), 400
+    # userid = data.get("userid")
+    # if not userid:
+    #     return jsonify({"status": "error", "message": "UserID is required"}), 400
 
     # Step 1: Retrieve the current challenge_num for the userid
-    response = (
-        supabase.table("players").select("challenge_num").eq("id", userid).execute()
+    # response = (
+    #     supabase.table("players").select("challenge_num").eq("id", current_user).execute()
+    # )
+
+    # if response.data:
+    #     current_challenge_num = response.data[0]["challenge_num"]
+
+    #     # Step 2: Add the amount to the current challenge_num
+    #     new_challenge_num = current_challenge_num + amount
+
+    # Step 3: Update the database with the new challenge_num
+    update_response = (
+        supabase.table("players")
+        .update({"challenge_num": value})
+        .eq("id", current_user)
+        .execute()
     )
 
-    if response.data:
-        current_challenge_num = response.data[0]["challenge_num"]
-
-        # Step 2: Add the amount to the current challenge_num
-        new_challenge_num = current_challenge_num + amount
-
-        # Step 3: Update the database with the new challenge_num
-        update_response = (
-            supabase.table("players")
-            .update({"challenge_num": new_challenge_num})
-            .eq("id", userid)
-            .execute()
+    if update_response.data:
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "message": f"changed challenge num to {value}",
+                }
+            ),
+            200,
         )
-
-        if update_response.data:
-            return (
-                jsonify(
-                    {
-                        "status": "success",
-                        "message": f"changed challenge num to {new_challenge_num}",
-                    }
-                ),
-                200,
-            )
-        else:
-            return (
-                jsonify(
-                    {"status": "error", "message": "Failed to update challenge number"}
-                ),
-                500,
-            )
     else:
         return (
-            jsonify({"status": "error", "message": "No userid found for this user"}),
-            404,
+            jsonify(
+                {"status": "error", "message": "Failed to update challenge number"}
+            ),
+            500,
         )
+    # else:
+    #     return (
+    #         jsonify({"status": "error", "message": "No userid found for this user"}),
+    #         404,
+    #     )
 
 
 @app.route("/get-userdata", methods=["POST"])
