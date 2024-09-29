@@ -8,7 +8,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from typing import Optional
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import functools
 
 # Load environment variables from the .env file
@@ -31,7 +31,7 @@ app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY")
 def generate_jwt(user_id: int) -> str:
     payload = {
         "user_id": user_id,
-        "exp": datetime.utcnow() + timedelta(weeks=1),
+        "exp": datetime.now(timezone.utc) + timedelta(weeks=1),
     }
     return jwt.encode(payload, app.config["JWT_SECRET_KEY"], algorithm="HS256")
 
